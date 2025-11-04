@@ -1,8 +1,10 @@
--- Полный UI-скрипт с Spinner [V] выше Close UI и рабочим таймером (Исправлен Spinner)
+-- ======================================
+-- Полный UI-скрипт с Jump Fix (6.6) [X]
+-- ======================================
 local Services = setmetatable({}, {
     __index = function(self, key)
         local Service = game:GetService(key)
-        rawset(self, key, Service)
+        rawset(self, self, Service)
         return Service
     end
 })
@@ -14,6 +16,10 @@ local UserInputService = Services.UserInputService
 local LocalPlayer = Players.LocalPlayer
 local Workspace = Services.Workspace
 
+-- КОНСТАНТЫ JUMP FIX
+local DEFAULT_JUMP_HEIGHT = 7.2
+local TARGET_JUMP_HEIGHT = 6.6 
+
 -- GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "IceHubModernUI"
@@ -22,7 +28,7 @@ screenGui.Parent = (gethui and gethui() or game:GetService("CoreGui"))
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 240, 0, 320)
+mainFrame.Size = UDim2.new(0, 240, 0, 360) 
 mainFrame.AnchorPoint = Vector2.new(1, 1)
 mainFrame.Position = UDim2.new(1, -20, 1, -20)
 mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
@@ -42,7 +48,7 @@ mainStroke.Transparency = 0.2
 mainStroke.Parent = mainFrame
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -10, 0, 30)
+titleLabel.Size = UDim2.new(0.5, 0, 0, 30) 
 titleLabel.Position = UDim2.new(0, 10, 0, 6)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Text = "Nur1k"
@@ -61,8 +67,8 @@ titleLine.BorderSizePixel = 0
 titleLine.Parent = mainFrame
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(0, 120, 0, 14)
-statusLabel.Position = UDim2.new(1, -140, 0, 8)
+statusLabel.Size = UDim2.new(0, 100, 0, 14)
+statusLabel.Position = UDim2.new(1, -110, 0, 8) 
 statusLabel.BackgroundTransparency = 1
 statusLabel.Text = "Anti-AFK on"
 statusLabel.Font = Enum.Font.GothamSemibold
@@ -72,7 +78,7 @@ statusLabel.TextXAlignment = Enum.TextXAlignment.Right
 statusLabel.Parent = mainFrame
 
 local buttonContainer = Instance.new("Frame")
-buttonContainer.Size = UDim2.new(1, -10, 1, -80)
+buttonContainer.Size = UDim2.new(1, -10, 1, -120) 
 buttonContainer.Position = UDim2.new(0, 5, 0, 45)
 buttonContainer.BackgroundTransparency = 1
 buttonContainer.Parent = mainFrame
@@ -113,7 +119,7 @@ local function createButton(name, icon)
     end)
 
     button.MouseLeave:Connect(function()
-        if button.BackgroundColor3 == Color3.fromRGB(0, 150, 75) then return end
+        if button.BackgroundColor3 == ACTIVE_COLOR then return end
         TweenService:Create(button, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(25, 25, 30) }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.1), { Transparency = 0.7 }):Play()
     end)
@@ -121,8 +127,10 @@ local function createButton(name, icon)
     return button, stroke
 end
 
--- Создаём кнопки (Spinner выше Close UI)
+-- Создаём кнопки
 local speedButton, speedStroke = createButton("Speed Boost (x1.5) [Q]", "⚡")
+-- >>> НОВАЯ КНОПКА JUMP FIX 6.6 <<<
+local jumpFixButton, jumpFixStroke = createButton("Jump Fix (6.6) [X]", "⬆️") 
 local floorButton, floorStroke = createButton("3rd Floor Glitch [C]", "🏢")
 local espButton, espStroke = createButton("ESP Players [P]", "👁️")
 local spinnerButton, spinnerStroke = createButton("Spinner [V]", "🔄")
@@ -149,10 +157,6 @@ local externalKeybinds = {}
 
 local function RegisterKeybind(keyCode, callback)
     if keyCode and callback then externalKeybinds[keyCode] = callback end
-end
-
-local function UnregisterKeybind(keyCode)
-    externalKeybinds[keyCode] = nil
 end
 
 -- ===============================
@@ -195,6 +199,63 @@ do
 
     speedButton.MouseButton1Click:Connect(toggleSpeed)
     RegisterKeybind(Enum.KeyCode.Q, toggleSpeed)
+end
+
+-- ===============================
+-- JUMP FIX (6.6) [X]
+-- ===============================
+do
+    local jumpActive = false
+    local jumpConnection = nil
+    
+    local function applyJumpHeight(height)
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.JumpHeight = height
+        end
+    end
+
+    local function updateJumpHeight()
+        local char = LocalPlayer.Character
+        if char then
+            applyJumpHeight(TARGET_JUMP_HEIGHT)
+        end
+    end
+
+    local function toggleJump()
+        jumpActive = not jumpActive
+        toggleButtonState(jumpFixButton, jumpFixStroke, jumpActive)
+        
+        if jumpActive then
+            applyJumpHeight(TARGET_JUMP_HEIGHT)
+            
+            if not jumpConnection then
+                jumpConnection = RunService.Heartbeat:Connect(updateJumpHeight)
+            end
+        else
+            applyJumpHeight(DEFAULT_JUMP_HEIGHT)
+            
+            if jumpConnection then
+                jumpConnection:Disconnect()
+                jumpConnection = nil
+            end
+        end
+    end
+
+    -- Обрабатываем респавн (CharacterAdded)
+    LocalPlayer.CharacterAdded:Connect(function(character)
+        local hum = character:WaitForChild("Humanoid")
+        
+        if jumpActive then
+            hum.JumpHeight = TARGET_JUMP_HEIGHT
+        else
+            hum.JumpHeight = DEFAULT_JUMP_HEIGHT
+        end
+    end)
+    
+    jumpFixButton.MouseButton1Click:Connect(toggleJump)
+    RegisterKeybind(Enum.KeyCode.X, toggleJump)
 end
 
 -- ===============================
@@ -352,22 +413,7 @@ do
 end
 
 -- ===============================
--- CLOSE UI
--- ===============================
-do
-    local uiVisible = true
-    local function toggleUI()
-        uiVisible = not uiVisible
-        mainFrame.Visible = uiVisible
-    end
-    closeButton.MouseButton1Click:Connect(toggleUI)
-    RegisterKeybind(Enum.KeyCode.B, toggleUI)
-    RegisterKeybind(Enum.KeyCode.Insert, toggleUI)
-end
-
--- ===============================
--- SPINNER [V] (ИСПРАВЛЕННЫЙ БЛОК)
--- Обеспечивает работу после респавна персонажа
+-- SPINNER [V]
 -- ===============================
 do
     local player = LocalPlayer
@@ -377,25 +423,21 @@ do
     local rotationSpeed = 1440
     local spinDuration = 0.25
 
-    local humanoidStateChangedConn -- Переменная для хранения подключения
+    local humanoidStateChangedConn
 
     local function setupSpinner(character)
-        -- Отключаем предыдущее соединение Humanoid.StateChanged, если оно есть
         if humanoidStateChangedConn then
             humanoidStateChangedConn:Disconnect()
             humanoidStateChangedConn = nil
         end
         
-        -- Получаем новый Humanoid и RootPart нового персонажа
         local humanoid = character:WaitForChild("Humanoid")
         local root = character:WaitForChild("HumanoidRootPart")
 
-        -- Подключаем логику вращения к новому Humanoid
         humanoidStateChangedConn = humanoid.StateChanged:Connect(function(_, newState)
             if newState == Enum.HumanoidStateType.Jumping and spinnerActive and not spinning then
                 spinning = true
                 
-                -- Логика вращения
                 local rotVelocity = Instance.new("BodyAngularVelocity")
                 rotVelocity.AngularVelocity = Vector3.new(0, math.rad(rotationSpeed), 0)
                 rotVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
@@ -403,7 +445,6 @@ do
                 rotVelocity.Parent = root
                 
                 task.delay(spinDuration, function()
-                    -- Проверка, что rotVelocity еще существует, прежде чем уничтожить
                     if rotVelocity.Parent then 
                         rotVelocity:Destroy()
                     end
@@ -418,7 +459,6 @@ do
         toggleButtonState(spinnerButton, spinnerStroke, spinnerActive)
     end
 
-    -- 1. Подключаем кнопку и клавишу
     spinnerButton.MouseButton1Click:Connect(toggleSpinner)
     RegisterKeybind(Enum.KeyCode.V, toggleSpinner)
 
@@ -426,16 +466,58 @@ do
         setupSpinner(character)
     end
     
-    -- 2. Обрабатываем появление персонажа (первый вход и респавн)
-    
-    -- Для первого спавна: если персонаж уже есть, настраиваем спиннер
     if player.Character then
         task.defer(onCharacterAdded, player.Character)
     end
 
-    -- Для всех последующих респавнов: подключаемся к событию CharacterAdded
     player.CharacterAdded:Connect(onCharacterAdded)
 end
+
+-- ===============================
+-- TOGGLE UI BUTTON (Для скрытия/показа)
+-- ===============================
+local toggleUIButton = Instance.new("TextButton")
+toggleUIButton.Name = "ToggleUI"
+toggleUIButton.Size = UDim2.new(0, 20, 0, 20)
+toggleUIButton.AnchorPoint = Vector2.new(1, 1)
+toggleUIButton.Position = UDim2.new(1, 0, 1, 0)
+toggleUIButton.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+toggleUIButton.BorderSizePixel = 0
+toggleUIButton.Text = "🔓" 
+toggleUIButton.Font = Enum.Font.Code
+toggleUIButton.TextSize = 16
+toggleUIButton.TextColor3 = Color3.fromRGB(0, 200, 255)
+toggleUIButton.TextScaled = true
+toggleUIButton.Parent = screenGui 
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggleUIButton
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = Color3.fromRGB(0, 200, 255)
+toggleStroke.Thickness = 2
+toggleStroke.Transparency = 0.2
+toggleStroke.Parent = toggleUIButton
+
+-- ===============================
+-- CLOSE UI (МОМЕНТАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ)
+-- ===============================
+local uiVisible = true
+local function toggleUIVisibility()
+    uiVisible = not uiVisible
+    
+    mainFrame.Visible = uiVisible
+    
+    toggleUIButton.Text = uiVisible and "🔓" or "🔒"
+end
+
+-- Подключаем к кнопкам и клавишам
+closeButton.MouseButton1Click:Connect(toggleUIVisibility)
+RegisterKeybind(Enum.KeyCode.B, toggleUIVisibility)
+RegisterKeybind(Enum.KeyCode.Insert, toggleUIVisibility)
+toggleUIButton.MouseButton1Click:Connect(toggleUIVisibility)
+
 
 -- ===============================
 -- Unified Input Handler
@@ -452,24 +534,29 @@ do
     end)
 end
 
--- expose API
-_G.Nur1kUI = _G.Nur1kUI or {}
-_G.Nur1kUI.RegisterKeybind = RegisterKeybind
-_G.Nur1kUI.UnregisterKeybind = UnregisterKeybind
+-- ===============================
+-- НИЖНИЙ КОНТЕЙНЕР
+-- ===============================
 
--- ===============================
--- Таймер
--- ===============================
+local bottomPanel = Instance.new("Frame")
+bottomPanel.Name = "BottomPanel"
+bottomPanel.Size = UDim2.new(1, 0, 0, 70) 
+bottomPanel.Position = UDim2.new(0, 0, 1, -70)
+bottomPanel.BackgroundTransparency = 1
+bottomPanel.Parent = mainFrame
+
+
+-- 1. Таймер (Размещен в BottomPanel)
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Size = UDim2.new(1, -20, 0, 18)
-timerLabel.Position = UDim2.new(0, 10, 1, -24)
+timerLabel.Position = UDim2.new(0, 10, 0, 6)
 timerLabel.BackgroundTransparency = 1
 timerLabel.Text = "Время в сессии: 00:00"
 timerLabel.Font = Enum.Font.GothamSemibold
 timerLabel.TextSize = 12
 timerLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
 timerLabel.TextXAlignment = Enum.TextXAlignment.Left
-timerLabel.Parent = mainFrame
+timerLabel.Parent = bottomPanel
 
 local startTick = tick()
 local function formatTime(totalSeconds)
@@ -486,17 +573,17 @@ task.spawn(function()
     end
 end)
 
--- Telegram button
+-- 2. Telegram button (Размещен в BottomPanel)
 local telegramBtn = Instance.new("TextButton")
-telegramBtn.Size = UDim2.new(1, 0, 0, 28)
-telegramBtn.Position = UDim2.new(0, 0, 1, -50) -- чуть выше нижнего края
+telegramBtn.Size = UDim2.new(1, -20, 0, 28)
+telegramBtn.Position = UDim2.new(0, 10, 0, 35) 
 telegramBtn.Text = "📱 Telegram: @nur1k_seller"
 telegramBtn.Font = Enum.Font.GothamBold
 telegramBtn.TextSize = 12
 telegramBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 telegramBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
 telegramBtn.AutoButtonColor = false
-telegramBtn.Parent = mainFrame
+telegramBtn.Parent = bottomPanel
 
 local telegramCorner = Instance.new("UICorner")
 telegramCorner.CornerRadius = UDim.new(0, 6)
