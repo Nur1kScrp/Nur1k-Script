@@ -1,5 +1,5 @@
 -- ======================================
--- ПОЛНЫЙ UI-СКРИПТ NUR1K (V2)
+-- ПОЛНЫЙ UI-СКРИПТ NUR1K (V2) - ИСПРАВЛЕННЫЙ SERVER HOP
 -- Интегрированы: Speed, Jump Fix, Floor Glitch, ESP, Spinner, Server Hop [G]
 -- ======================================
 local Services = setmetatable({}, {
@@ -28,7 +28,7 @@ local baseSpeed = 21.7
 local ACTIVE_COLOR = Color3.fromRGB(0, 150, 75)
 local INACTIVE_COLOR = Color3.fromRGB(25, 25, 30)
 local STROKE_COLOR = Color3.fromRGB(0, 200, 255)
-local HOP_COLOR = Color3.fromRGB(255, 165, 0) -- Оранжевый для Hop
+local HOP_COLOR = Color3.fromRGB(255, 165, 0) -- Оранжевый для Hop (Больше не используется для HOP, но оставлен как константа)
 
 -- GUI
 local screenGui = Instance.new("ScreenGui")
@@ -61,7 +61,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(0.5, 0, 0, 30) 
 titleLabel.Position = UDim2.new(0, 10, 0, 6)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Nur1k"
+titleLabel.Text = "Nur1k HUB"
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 16
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -80,7 +80,7 @@ local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0, 100, 0, 14)
 statusLabel.Position = UDim2.new(1, -110, 0, 8) 
 statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Anti-Afk on" -- Изменено для общего статуса
+statusLabel.Text = "Anti-AFK on" -- Изменено для общего статуса
 statusLabel.Font = Enum.Font.GothamSemibold
 statusLabel.TextSize = 12
 statusLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
@@ -501,30 +501,53 @@ do
 end
 
 -- ===============================
--- SERVER HOP [G] - Интегрированная функция
+-- SERVER HOP [G] - Интегрированная функция (ИСПРАВЛЕНА, теперь зеленая и без ID)
 -- ===============================
 do
     local isHopping = false
 
-    local function getPlaceServers()
+    -- БЛОК ДЛЯ ОБХОДА БЛОКИРОВКИ HTTP (Предполагается наличие HttpGet/syn.request в эксплойте)
+    local function getServersData()
         local placeId = game.PlaceId
-        local servers = {}
-        -- Используем API Roblox для получения списка публичных серверов
         local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
         
-        local success, response = pcall(function()
-            return HttpService:GetAsync(url)
+        local httpFunction = HttpGet or syn.request or game.HttpGet 
+
+        if not httpFunction then
+            warn("Error: Global HTTP function (HttpGet/syn.request) not found. Server Hop may fail.")
+            local success, response = pcall(function()
+                return HttpService:GetAsync(url)
+            end)
+            return success and response or nil
+        end
+
+        local response
+        local success = pcall(function()
+            if httpFunction == HttpGet or httpFunction == game.HttpGet then
+                response = httpFunction(url)
+            elseif httpFunction == syn.request then
+                response = httpFunction({Url = url, Method = "GET"}).Body
+            else
+                response = httpFunction(url)
+            end
         end)
         
-        if success and response then
+        return success and response or nil
+    end
+
+    local function getAvailableServers()
+        local servers = {}
+        local response = getServersData()
+        
+        if response then
             local data
             local decodeSuccess = pcall(function()
                 data = HttpService:JSONDecode(response)
             end)
 
             if decodeSuccess and data and data.data then
-                for _, v in pairs(data.data) do
-                    -- Фильтруем серверы, на которых есть свободные места и которые не являются текущим сервером (если API предоставляет InstanceId)
+                for _, v in ipairs(data.data) do
+                    -- Фильтруем: есть места, не текущий сервер
                     if type(v) == "table" and v.id and v.playing < v.maxPlayers and v.id ~= game.JobId then
                         table.insert(servers, v.id)
                     end
@@ -537,10 +560,12 @@ do
     local function serverHop()
         if isHopping then return end
         isHopping = true
-        toggleButtonState(serverHopButton, serverHopStroke, true, HOP_COLOR) -- Активируем кнопку оранжевым
-        serverHopButton.Text = "➡️ Searching..."
+        
+        -- Используем ACTIVE_COLOR (зеленый)
+        toggleButtonState(serverHopButton, serverHopStroke, true, ACTIVE_COLOR) 
+        serverHopButton.Text = "➡️ Searching for Server..."
 
-        local servers = getPlaceServers()
+        local servers = getAvailableServers()
 
         if #servers == 0 then
             serverHopButton.Text = "➡️ No Servers Found!"
@@ -552,7 +577,9 @@ do
         end
 
         local randomServer = servers[math.random(1, #servers)]
-        serverHopButton.Text = "➡️ Hopping to " .. randomServer:sub(1, 4) .. "..."
+        
+        -- Убираем цифры ID сервера из текста
+        serverHopButton.Text = "➡️ Teleporting Now..."
 
         -- Запускаем телепортацию
         local success, err = pcall(function()
@@ -567,8 +594,6 @@ do
             serverHopButton.Text = "➡️ Server Hop [G]"
             isHopping = false
         end
-        -- При успешной телепортации скрипт будет остановлен, поэтому деактивация isHopping не нужна.
-        -- Если телепортация не удалась, состояние восстанавливается через 2 секунды.
     end
 
     serverHopButton.MouseButton1Click:Connect(serverHop)
