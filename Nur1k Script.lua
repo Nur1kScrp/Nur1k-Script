@@ -1,6 +1,6 @@
 -- ======================================
--- Полный UI-скрипт с Jump Fix (6.6) [X] + ⚙️ Bind Settings
--- Включена функция прокрутки для ButtonContainer
+-- ПОЛНЫЙ UI-СКРИПТ NUR1K (V2)
+-- Интегрированы: Speed, Jump Fix, Floor Glitch, ESP, Spinner, Server Hop [G]
 -- ======================================
 local Services = setmetatable({}, {
     __index = function(self, key)
@@ -14,22 +14,25 @@ local TweenService = Services.TweenService
 local Players = Services.Players
 local RunService = Services.RunService
 local UserInputService = Services.UserInputService
+local TeleportService = Services.TeleportService -- Добавлено
+local HttpService = Services.HttpService -- Добавлено
 local LocalPlayer = Players.LocalPlayer
 local Workspace = Services.Workspace
 
 -- КОНСТАНТЫ / НАСТРОЙКИ (сделаны изменяемыми)
 local DEFAULT_JUMP_HEIGHT = 7.2
-local TARGET_JUMP_HEIGHT = 6.6 
-local baseSpeed = 24 -- вынес наружу, чтобы Bind мог менять
+local TARGET_JUMP_HEIGHT = 5.6 
+local baseSpeed = 21.7
 
 -- Цвета
 local ACTIVE_COLOR = Color3.fromRGB(0, 150, 75)
 local INACTIVE_COLOR = Color3.fromRGB(25, 25, 30)
 local STROKE_COLOR = Color3.fromRGB(0, 200, 255)
+local HOP_COLOR = Color3.fromRGB(255, 165, 0) -- Оранжевый для Hop
 
 -- GUI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "IceHubModernUI"
+screenGui.Name = "Nur1kHubModernUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = (gethui and gethui() or game:GetService("CoreGui"))
 
@@ -77,7 +80,7 @@ local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0, 100, 0, 14)
 statusLabel.Position = UDim2.new(1, -110, 0, 8) 
 statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Anti-AFK on"
+statusLabel.Text = "Anti-Afk on" -- Изменено для общего статуса
 statusLabel.Font = Enum.Font.GothamSemibold
 statusLabel.TextSize = 12
 statusLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
@@ -115,10 +118,11 @@ layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 end)
 -- ===============================================
 
-local function toggleButtonState(button, stroke, isActive)
+local function toggleButtonState(button, stroke, isActive, customColor)
+    local col = customColor or ACTIVE_COLOR
     if isActive then
-        button.BackgroundColor3 = ACTIVE_COLOR
-        stroke.Color = ACTIVE_COLOR
+        button.BackgroundColor3 = col
+        stroke.Color = col
         stroke.Transparency = 0.3
     else
         button.BackgroundColor3 = INACTIVE_COLOR
@@ -147,7 +151,7 @@ local function createButton(name, icon)
     stroke.Transparency = 0.7
     stroke.Parent = button
 
-    button.Parent = buttonContainer -- Родитель - ScrollingFrame
+    button.Parent = buttonContainer
 
     button.MouseEnter:Connect(function()
         TweenService:Create(button, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(35, 35, 40) }):Play()
@@ -155,7 +159,7 @@ local function createButton(name, icon)
     end)
 
     button.MouseLeave:Connect(function()
-        if button.BackgroundColor3 == ACTIVE_COLOR then return end
+        if button.BackgroundColor3 == ACTIVE_COLOR or button.BackgroundColor3 == HOP_COLOR then return end
         TweenService:Create(button, TweenInfo.new(0.1), { BackgroundColor3 = INACTIVE_COLOR }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.1), { Transparency = 0.7 }):Play()
     end)
@@ -163,17 +167,19 @@ local function createButton(name, icon)
     return button, stroke
 end
 
--- Создаём КНОПКИ (ТОЛЬКО ОСНОВНЫЕ)
-local speedButton, speedStroke = createButton("Speed Boost (x1.5) [Q]", "⚡")
-local jumpFixButton, jumpFixStroke = createButton("Jump Fix (6.6) [X]", "⬆️") 
+-- Создаём КНОПКИ (ОСНОВНЫЕ)
+local speedButton, speedStroke = createButton("Speed Boost [Q]", "⚡")
+local jumpFixButton, jumpFixStroke = createButton("Jump Boost [X]", "⬆️") 
 local floorButton, floorStroke = createButton("3rd Floor Glitch [C]", "🏢")
 local espButton, espStroke = createButton("ESP Players [P]", "👁️")
 local spinnerButton, spinnerStroke = createButton("Spinner [V]", "🔄")
 
+-- НОВАЯ КНОПКА: SERVER HOP
+local serverHopButton, serverHopStroke = createButton("Server Hop [G]", "➡️") 
+-- ------------------------
+
 local bindButton, bindStroke = createButton("Bind", "⚙️") 
 local closeButton, closeStroke = createButton("Close UI [B]", "🗑")
-
--- ТЕСТОВЫЕ КНОПКИ УДАЛЕНЫ
 
 local externalKeybinds = {}
 
@@ -492,6 +498,81 @@ do
     end
 
     player.CharacterAdded:Connect(onCharacterAdded)
+end
+
+-- ===============================
+-- SERVER HOP [G] - Интегрированная функция
+-- ===============================
+do
+    local isHopping = false
+
+    local function getPlaceServers()
+        local placeId = game.PlaceId
+        local servers = {}
+        -- Используем API Roblox для получения списка публичных серверов
+        local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"
+        
+        local success, response = pcall(function()
+            return HttpService:GetAsync(url)
+        end)
+        
+        if success and response then
+            local data
+            local decodeSuccess = pcall(function()
+                data = HttpService:JSONDecode(response)
+            end)
+
+            if decodeSuccess and data and data.data then
+                for _, v in pairs(data.data) do
+                    -- Фильтруем серверы, на которых есть свободные места и которые не являются текущим сервером (если API предоставляет InstanceId)
+                    if type(v) == "table" and v.id and v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        table.insert(servers, v.id)
+                    end
+                end
+            end
+        end
+        return servers
+    end
+
+    local function serverHop()
+        if isHopping then return end
+        isHopping = true
+        toggleButtonState(serverHopButton, serverHopStroke, true, HOP_COLOR) -- Активируем кнопку оранжевым
+        serverHopButton.Text = "➡️ Searching..."
+
+        local servers = getPlaceServers()
+
+        if #servers == 0 then
+            serverHopButton.Text = "➡️ No Servers Found!"
+            task.wait(2)
+            toggleButtonState(serverHopButton, serverHopStroke, false)
+            serverHopButton.Text = "➡️ Server Hop [G]"
+            isHopping = false
+            return
+        end
+
+        local randomServer = servers[math.random(1, #servers)]
+        serverHopButton.Text = "➡️ Hopping to " .. randomServer:sub(1, 4) .. "..."
+
+        -- Запускаем телепортацию
+        local success, err = pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer, LocalPlayer)
+        end)
+
+        if not success then
+            warn("Teleport failed:", err)
+            serverHopButton.Text = "➡️ Hop Failed! Retrying..."
+            task.wait(2)
+            toggleButtonState(serverHopButton, serverHopStroke, false)
+            serverHopButton.Text = "➡️ Server Hop [G]"
+            isHopping = false
+        end
+        -- При успешной телепортации скрипт будет остановлен, поэтому деактивация isHopping не нужна.
+        -- Если телепортация не удалась, состояние восстанавливается через 2 секунды.
+    end
+
+    serverHopButton.MouseButton1Click:Connect(serverHop)
+    RegisterKeybind(Enum.KeyCode.G, serverHop)
 end
 
 -- ===============================
