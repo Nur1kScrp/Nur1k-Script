@@ -1,5 +1,5 @@
 -- ======================================
--- ПОЛНЫЙ UI-СКРИПТ NUR1K (V5) - Server Hop с АВТО-ПОВТОРОМ (3 попытки)
+-- ПОЛНЫЙ UI-СКРИПТ NUR1K (V13) - Ускоренный Server Hop
 -- ======================================
 local Services = setmetatable({}, {
     __index = function(self, key)
@@ -86,9 +86,9 @@ statusLabel.TextColor3 = Color3.fromRGB(80, 255, 120)
 statusLabel.TextXAlignment = Enum.TextXAlignment.Right
 statusLabel.Parent = mainFrame
 
--- ===============================================
+---
 -- SCROLLINGFRAME (Контейнер с прокруткой)
--- ===============================================
+---
 local buttonContainer = Instance.new("ScrollingFrame")
 buttonContainer.Size = UDim2.new(1, -10, 1, -120) 
 buttonContainer.Position = UDim2.new(0, 5, 0, 45)
@@ -115,7 +115,7 @@ layout.Parent = buttonContainer
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     buttonContainer.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
 end)
--- ===============================================
+---
 
 local function toggleButtonState(button, stroke, isActive, customColor)
     local col = customColor or ACTIVE_COLOR
@@ -186,9 +186,9 @@ local function RegisterKeybind(keyCode, callback)
     if keyCode and callback then externalKeybinds[keyCode] = callback end
 end
 
--- ===============================
+---
 -- SPEED BOOST
--- ===============================
+---
 do
     local speedConn
     local active = false
@@ -227,9 +227,9 @@ do
     RegisterKeybind(Enum.KeyCode.Q, toggleSpeed)
 end
 
--- ===============================
+---
 -- JUMP FIX (6.6) [X]
--- ===============================
+---
 do
     local jumpActive = false
     local jumpConnection = nil
@@ -284,9 +284,9 @@ do
     RegisterKeybind(Enum.KeyCode.X, toggleJump)
 end
 
--- ===============================
+---
 -- 3RD FLOOR GLITCH
--- ===============================
+---
 do
     local active = false
     local platform, conn
@@ -341,9 +341,9 @@ do
     RegisterKeybind(Enum.KeyCode.C, toggleFloorGlitch)
 end
 
--- ===============================
+---
 -- ESP
--- ===============================
+---
 do
     local ESP_CONTAINER = {}
     local espActive = false
@@ -438,9 +438,9 @@ do
     RegisterKeybind(Enum.KeyCode.P, toggleESP)
 end
 
--- ===============================
+---
 -- SPINNER [V]
--- ===============================
+---
 do
     local player = LocalPlayer
     local spinnerActive = false
@@ -499,15 +499,44 @@ do
     player.CharacterAdded:Connect(onCharacterAdded)
 end
 
--- ===============================
--- SERVER HOP [G] - Версия 5: Автоматический повторный Hop
--- ===============================
+---
+-- SERVER HOP [G] - УСКОРЕННАЯ ВЕРСИЯ (V13)
+---
 do
     local isHopping = false
-    local HOP_TIMEOUT = 4 -- Таймаут ожидания телепортации в секундах.
-    local MAX_ATTEMPTS = 3 -- Максимальное количество попыток Server Hop.
+    local HOP_TIMEOUT = 4 
+    
+    -- ФУНКЦИЯ ДЛЯ СУПЕРАГРЕССИВНОЙ ТЕЛЕПОРТАЦИИ (Без изменений)
+    local function aggressiveTeleport(serverId)
+        local success = false
+        local attempts = 0
+        local PlaceId = game.PlaceId
+        local Player = game.Players.LocalPlayer
+        
+        while not success and attempts < 2 do
+            attempts = attempts + 1
+            
+            success = pcall(function()
+                -- 1. Стандартный метод Roblox
+                TeleportService:TeleportToPlaceInstance(PlaceId, serverId, Player)
+                
+                -- 2. Обходной метод loadstring с прямой командой
+                if loadstring and game:GetService("HttpService") then
+                    local teleport_command = string.format("game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)", PlaceId, serverId)
+                    loadstring(teleport_command)()
+                end
 
-    -- БЛОК ДЛЯ ОБХОДА БЛОКИРОВКИ HTTP 
+                -- 3. Специальные функции эксплойтов (Synapse X / Sentinel и др.)
+                if Teleport and isfunction(Teleport) then Teleport(PlaceId, serverId) end
+                if syn and syn.teleport then syn.teleport(PlaceId, serverId) end
+                
+            end)
+            if not success then task.wait(0.5) end
+        end
+        return success
+    end
+
+    -- БЛОК ДЛЯ ОБХОДА БЛОКИРОВКИ HTTP (Без изменений)
     local function getServersData()
         local placeId = game.PlaceId
         local url = "https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100" 
@@ -515,7 +544,6 @@ do
         local httpFunction = HttpGet or syn.request or game.HttpGet 
 
         if not httpFunction then
-            warn("Error: Global HTTP function (HttpGet/syn.request) not found. Server Hop may fail.")
             local success, response = pcall(function()
                 return HttpService:GetAsync(url)
             end)
@@ -558,95 +586,89 @@ do
         return servers
     end
 
-    -- Функция для сброса состояния кнопки (окончательный сброс)
     local function finalResetHopState(message)
         isHopping = false
         toggleButtonState(serverHopButton, serverHopStroke, false)
         serverHopButton.Text = message or "➡️ Server Hop [G]"
         task.wait(2)
-        if serverHopButton.Text == message then 
+        if not isHopping and serverHopButton.Text == message then 
             serverHopButton.Text = "➡️ Server Hop [G]"
         end
     end
 
     local function serverHop()
-        if isHopping then return end
-        isHopping = true
+        if isHopping then 
+            -- Если кнопка уже активна, выключаем ее и сбрасываем состояние
+            finalResetHopState("➡️ Server Hop Disabled.")
+            return 
+        end
         
+        isHopping = true
         toggleButtonState(serverHopButton, serverHopStroke, true, ACTIVE_COLOR) 
         
         local attempts = 0
         local teleportSuccessful = false
 
-        while attempts < MAX_ATTEMPTS and not teleportSuccessful and isHopping do
+        -- БЕСКОНЕЧНЫЙ ЦИКЛ, ПОКА isHopping = true
+        while isHopping and not teleportSuccessful do
             attempts = attempts + 1
-            serverHopButton.Text = "➡️ Searching: Attempt " .. attempts .. "/" .. MAX_ATTEMPTS
+            
+            serverHopButton.Text = "➡️ Searching for Server..."
             
             local servers = getAvailableServers()
 
             if #servers == 0 then
-                finalResetHopState("➡️ No Servers Found!")
-                return
-            end
-
-            local randomServer = servers[math.random(1, #servers)]
-            
-            serverHopButton.Text = "➡️ Teleporting in 1s..." 
-            
-            task.wait(1) 
-
-            serverHopButton.Text = "➡️ Teleporting Now: " .. attempts
-
-            local hopDidTimeout = true
-            
-            -- Запускаем таймаут
-            local timeoutThread = task.spawn(function()
-                task.wait(HOP_TIMEOUT)
-                if hopDidTimeout then
-                    warn("Server Hop: Teleport timed out on attempt " .. attempts)
-                    -- Это позволяет циклу while продолжить следующую попытку
-                end
-            end)
-
-            -- Запускаем телепортацию (Агрессивный метод)
-            local success, err = pcall(function()
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, randomServer, LocalPlayer)
-                -- Дополнительные агрессивные методы (если нужны)
-                if Teleport and isfunction(Teleport) then Teleport(game.PlaceId, randomServer) end
-            end)
-            
-            -- Если pcall успешен (т.е. Roblox принял запрос на телепорт)
-            if success then
-                teleportSuccessful = true
-                hopDidTimeout = false -- Отменяем логику таймаута
-                task.cancel(timeoutThread)
-                -- Скрипт остановится/перезапустится на новом сервере.
-                return 
+                -- Уменьшена задержка с 5с до 2с
+                serverHopButton.Text = "➡️ No Servers. Retrying in 2s..."
+                task.wait(2)
+                -- Цикл продолжится благодаря условию while isHopping
             else
-                -- Ошибка pcall (например, если TeleportService заблокирован или вызван неверно)
-                warn("Teleport failed (pcall error):", err)
+                local randomServer = servers[math.random(1, #servers)]
+                
+                -- Убрано task.wait(1). Телепорт начинается немедленно.
+
+                if not isHopping then break end 
+
+                serverHopButton.Text = "➡️ Teleporting Now (Attempt " .. attempts .. ")"
+
+                local hopDidTimeout = true
+                
+                local timeoutThread = task.spawn(function()
+                    task.wait(HOP_TIMEOUT)
+                    if hopDidTimeout and not teleportSuccessful and isHopping then
+                        warn("Server Hop: Teleport timed out on attempt " .. attempts)
+                    end
+                end)
+
+                teleportSuccessful = aggressiveTeleport(randomServer)
+                
                 hopDidTimeout = false 
                 task.cancel(timeoutThread)
-                
-                -- Сообщение об ошибке, но цикл продолжит работать
-                serverHopButton.Text = "➡️ Hop Failed: Auto-Retrying..."
-                task.wait(2) -- Небольшая пауза перед следующей попыткой
+
+                if teleportSuccessful then
+                    return -- Выход из функции при успехе
+                else
+                    warn("Teleport failed (Aggressive attempt) on attempt: " .. attempts)
+                    
+                    if not isHopping then break end
+                    -- Уменьшена задержка повтора с 3с до 0.5с
+                    serverHopButton.Text = "➡️ Hop Failed: Retrying fast..."
+                    task.wait(0.5)
+                end
             end
         end
-
-        -- Если цикл завершился без успешной телепортации
-        if not teleportSuccessful then
-            finalResetHopState("➡️ Max Hops Failed. Try [G] again.")
-        end
+        
+        -- Выполняется, если цикл был прерван (isHopping = false)
+        finalResetHopState("➡️ Server Hop Disabled.")
     end
 
     serverHopButton.MouseButton1Click:Connect(serverHop)
     RegisterKeybind(Enum.KeyCode.G, serverHop)
 end
 
--- ===============================
+---
 -- Settings Frame (для ⚙️ Bind)
--- ===============================
+---
 do
     local settingsFrame = Instance.new("Frame")
     settingsFrame.Name = "BindSettingsFrame"
@@ -784,9 +806,9 @@ do
     end)
 end
 
--- ===============================
+---
 -- TOGGLE UI BUTTON (Для скрытия/показа)
--- ===================================
+---
 local toggleUIButton = Instance.new("TextButton")
 toggleUIButton.Name = "ToggleUI"
 toggleUIButton.Size = UDim2.new(0, 20, 0, 20)
@@ -811,9 +833,9 @@ toggleStroke.Thickness = 2
 toggleStroke.Transparency = 0.2
 toggleStroke.Parent = toggleUIButton
 
--- ===============================
+---
 -- CLOSE UI (МОМЕНТАЛЬНОЕ ПЕРЕКЛЮЧЕНИЕ)
--- ===============================
+---
 local uiVisible = true
 local function toggleUIVisibility()
     uiVisible = not uiVisible
@@ -830,9 +852,9 @@ RegisterKeybind(Enum.KeyCode.Insert, toggleUIVisibility)
 toggleUIButton.MouseButton1Click:Connect(toggleUIVisibility)
 
 
--- ===============================
+---
 -- Unified Input Handler
--- ===============================
+---
 do
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
@@ -845,9 +867,9 @@ do
     end)
 end
 
--- ===============================
+---
 -- НИЖНИЙ КОНТЕЙНЕР
--- ===============================
+---
 
 local bottomPanel = Instance.new("Frame")
 bottomPanel.Name = "BottomPanel"
